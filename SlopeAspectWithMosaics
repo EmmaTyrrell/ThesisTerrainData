@@ -1,0 +1,107 @@
+# script to map avalanches from CAIC data
+
+# import directories
+import arcpy
+from arcpy.sa import *
+import os
+print ("imported modules")
+
+# establish parameters
+# set master workspace and overwrite conditions
+arcpy.env.workspace = "C:\\Users\\Emma Tyrrell\\Documents\\PSU_SDS\\THESIS_230226"
+projectBoundary = (arcpy.env.workspace + "\\Data\\StaticDataGDB.gdb\\ProjectBoundary")
+gdbName = (arcpy.env.workspace + "\\Data\\StaticDataGDB.gdb")
+mosaicBit = 1
+mosaicPixelType = "32_BIT_FLOAT"
+GCSsr = arcpy.SpatialReference(4326)
+PCSsr = arcpy.SpatialReference(6432)
+arcpy.env.overwriteOutput = True
+arcpy.env.qualifiedFieldNames = False
+print ("master parameters established")
+
+# set terrain data workspace
+terrainDataFilesWorkspace = (arcpy.env.workspace + "\\Data\\TerrainData")
+slopeOutputFiles = (terrainDataFilesWorkspace + "\\SlopeOutputFiles")
+aspectOutputFiles = (terrainDataFilesWorkspace + "\\AspectOutputFiles")
+demFiles = (arcpy.env.workspace + "\\Data\\DEM")
+mosaicAspectName = "aspectMosaic"
+mosaicSlopeName = "slopeMosaic"
+print ("terrain parameters established")
+
+# create slope + mosaic
+walk = arcpy.da.Walk(demFiles, topdown=True, datatype="RasterDataset")
+try:
+    # walk for slope
+    for dirpath, dirnames, filenames in walk:
+        for filename in filenames:
+
+            shapefile_slope = f"slope_{filename[:-13]}_.tif"
+
+            # run slope tool
+            try:
+                # conduct slope
+                outSlope = Slope(os.path.join(dirpath, filename), "DEGREE", 1, "PLANAR", "", "GPU_THEN_CPU")
+                print(shapefile_slope + " slope executed")
+
+                # save slope
+                outSlope.save(slopeOutputFiles + "\\" + shapefile_slope)
+                print(shapefile_slope + " slope saved")
+
+            except Exception as ex:
+                print(ex)
+
+    # create mosaic dataset
+    arcpy.CreateMosaicDataset_management(gdbName, mosaicSlopeName, PCSsr, mosaicBit, mosaicPixelType)
+    print("slope mosaic created")
+
+    # add rasters to raster dataset
+    walk = arcpy.da.Walk(slopeOutputFiles, topdown=True, datatype="RasterDataset")
+    for dirpath, dirnames, filenames in walk:
+        for filename in filenames:
+            arcpy.AddRastersToMosaicDataset_management((gdbName + "\\" + aspectOutputFiles), "Raster Dataset",
+                                                       os.path.join(dirpath, filename), "", "", "UPDATE_OVERVIEWS",
+                                                       "", "", "", PCSsr, "", "", "", "BUILD_PYRAMIDS",
+                                                       "CALCULATE_STATISTICS", "BUILD_THUMBNAILS")
+            print(filename + " added to mosaic")
+
+except Exception as ex:
+    print(ex)
+
+# add aspect + mosaic
+walk = arcpy.da.Walk(demFiles, topdown=True, datatype="RasterDataset")
+try:
+    # walk for slope
+    for dirpath, dirnames, filenames in walk:
+        for filename in filenames:
+            shapefile_aspect = f"aspect_{filename[:-13]}_.tif"
+
+            try:
+                # conduct aspect
+                outAspect = Aspect(os.path.join(dirpath, filename), "PLANAR", "", "", "GPU_THEN_CPU")
+                print(shapefile_aspect + " aspect executed")
+
+                # save aspect
+                outAspect.save(aspectOutputFiles + "\\" + shapefile_aspect)
+                print(shapefile_aspect + "aspect saved")
+
+            except Exception as ex:
+                print(ex)
+
+    # create mosaic dataset
+    arcpy.CreateMosaicDataset_management(gdbName, mosaicAspectName, PCSsr, mosaicBit, mosaicPixelType)
+    print("aspect mosaic created")
+
+    # add rasters to raster dataset
+    walk = arcpy.da.Walk(aspectOutputFiles, topdown=True, datatype="RasterDataset")
+    for dirpath, dirnames, filenames in walk:
+        for filename in filenames:
+            arcpy.AddRastersToMosaicDataset_management((gdbName + "\\" + mosaicSlopeName),
+                                                       "Raster Dataset", os.path.join(dirpath, filename),
+                                                       "", "", "UPDATE_OVERVIEWS", "", "", "", PCSsr, "", "",
+                                                       "", "BUILD_PYRAMIDS", "CALCULATE_STATISTICS", "BUILD_THUMBNAILS")
+            print(filename + " added to mosaic")
+
+except Exception as ex:
+    print(ex)
+
+print ("life is only getting worse")
