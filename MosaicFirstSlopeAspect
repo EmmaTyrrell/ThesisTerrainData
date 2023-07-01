@@ -1,0 +1,57 @@
+# script to map avalanches from CAIC data
+
+# import directories
+import arcpy
+from arcpy.sa import *
+import os
+print ("imported modules")
+
+# establish parameters
+# set master workspace and overwrite conditions
+arcpy.env.workspace = "C:\\Users\\Emma Tyrrell\\Documents\\PSU_SDS\\THESIS_230226"
+projectBoundary = (arcpy.env.workspace + "\\Data\\StaticDataGDB.gdb\\ProjectBoundary")
+gdbName = (arcpy.env.workspace + "\\Data\\StaticDataGDB.gdb")
+mosaicBit = 1
+mosaicPixelType = "32_BIT_FLOAT"
+GCSsr = arcpy.SpatialReference(4326)
+PCSsr = arcpy.SpatialReference(6432)
+arcpy.env.overwriteOutput = True
+arcpy.env.qualifiedFieldNames = False
+print ("master parameters established")
+
+# set terrain data workspace
+terrainDataFilesWorkspace = (arcpy.env.workspace + "\\Data\\TerrainData")
+demFiles = (arcpy.env.workspace + "\\Data\\DEM")
+demMosaic = "demMosaic"
+print ("terrain parameters established")
+
+# create mosaic data set for DEM files
+try:
+    arcpy.CreateMosaicDataset_management(gdbName, demMosaic, PCSsr, mosaicBit, mosaicPixelType)
+    print("dem mosaic created")
+
+    # add rasters to raster dataset
+    walk = arcpy.da.Walk(demFiles, topdown=True, datatype="RasterDataset")
+    for dirpath, dirnames, filenames in walk:
+        for filename in filenames:
+            arcpy.AddRastersToMosaicDataset_management((gdbName + "\\" + demMosaic), "Raster Dataset",
+                                                       os.path.join(dirpath, filename), "", "", "UPDATE_OVERVIEWS",
+                                                       "", "", "", PCSsr, "", "", "", "BUILD_PYRAMIDS",
+                                                       "CALCULATE_STATISTICS", "BUILD_THUMBNAILS")
+            print(filename + " added to mosaic")
+except Exception as ex:
+    print(ex)
+
+# slope and aspect on mosaic data set
+try:
+    # create slope
+    outSlope = Slope((gdbName + "\\" + demMosaic), "DEGREE", "", "PLANAR", "METER", "GPU_THEN_CPU")
+    outSlope.save(gdbName + "\\slopeMaster")
+    print("slope created")
+
+    # create aspect
+    outAspect = Aspect((gdbName + "\\" + demMosaic), "PLANAR", "METER", "", "GPU_THEN_CPU")
+    outAspect.save(gdbName + "\\aspectMaster")
+    print("aspect created")
+except Exception as ex:
+    print(ex)
